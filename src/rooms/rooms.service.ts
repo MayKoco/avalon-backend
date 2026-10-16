@@ -97,7 +97,7 @@ export class RoomsService {
       if (!state.testMode) throw new Error('TEST_MODE_ONLY');
       const now = Date.now();
       if (state.phase === 'ROLE_REVEAL') {
-        for (const player of state.players) if (!state.acknowledgedPlayerIds.includes(player.id)) this.engine.acknowledge(state, player.id, now);
+        for (const player of state.players) if (!state.acknowledgedPlayerIds.includes(player.id)) this.engine.acknowledge(state, player.id, now, true);
         return state;
       }
       if (state.phase === 'TEAM_SELECTION') {
@@ -136,23 +136,30 @@ export class RoomsService {
 
   async mutate(code: string, token: string, action: (state: GameState, playerId: string, isHost: boolean) => GameState) {
     const { room, player } = await this.authenticate(code, token);
-    const state = await this.loadState(room.id);
-    const beforeVersion = state.stateVersion;
-    const beforePhaseVersion = state.phaseVersion;
-    const next = action(state, player.id, room.hostPlayerId === player.id);
-    next.stateVersion = beforeVersion + 1;
-    await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.gameSession.updateMany({ where: { id: next.id, stateVersion: beforeVersion }, data: { phase: next.phase, stateVersion: next.stateVersion, leaderSeat: next.leaderSeat, questIndex: next.questIndex, rejectionCount: next.rejectionCount, goodScore: next.goodScore, evilScore: next.evilScore, winner: next.winner, status: next.phase === 'GAME_OVER' ? 'COMPLETED' : 'ACTIVE', completedAt: next.phase === 'GAME_OVER' ? new Date() : null, stateJson: JSON.stringify(next) } });
-      if (updated.count !== 1) throw new Error('STALE_STATE_VERSION');
-      await tx.gameRoom.update({ where: { id: room.id }, data: { status: next.phase, stateVersion: next.stateVersion } });
-      if (next.phaseVersion !== beforePhaseVersion) {
-        await tx.gamePhase.updateMany({ where: { sessionId: next.id, endedAt: null }, data: { endedAt: new Date() } });
-        await tx.gamePhase.create({ data: { sessionId: next.id, phase: next.phase, version: next.phaseVersion } });
-        await tx.gameTimer.create({ data: { sessionId: next.id, ...this.timerData(next) } });
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const state = await this.loadState(room.id);
+      const beforeVersion = state.stateVersion;
+      const beforePhaseVersion = state.phaseVersion;
+      const next = action(state, player.id, room.hostPlayerId === player.id);
+      next.stateVersion = beforeVersion + 1;
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          const updated = await tx.gameSession.updateMany({ where: { id: next.id, stateVersion: beforeVersion }, data: { phase: next.phase, stateVersion: next.stateVersion, leaderSeat: next.leaderSeat, questIndex: next.questIndex, rejectionCount: next.rejectionCount, goodScore: next.goodScore, evilScore: next.evilScore, winner: next.winner, status: next.phase === 'GAME_OVER' ? 'COMPLETED' : 'ACTIVE', completedAt: next.phase === 'GAME_OVER' ? new Date() : null, stateJson: JSON.stringify(next) } });
+          if (updated.count !== 1) throw new Error('STALE_STATE_VERSION');
+          await tx.gameRoom.update({ where: { id: room.id }, data: { status: next.phase, stateVersion: next.stateVersion } });
+          if (next.phaseVersion !== beforePhaseVersion) {
+            await tx.gamePhase.updateMany({ where: { sessionId: next.id, endedAt: null }, data: { endedAt: new Date() } });
+            await tx.gamePhase.create({ data: { sessionId: next.id, phase: next.phase, version: next.phaseVersion } });
+            await tx.gameTimer.create({ data: { sessionId: next.id, ...this.timerData(next) } });
+          }
+          await tx.gameEvent.create({ data: { roomId: room.id, sessionId: next.id, type: 'STATE_CHANGED', stateVersion: next.stateVersion, publicJson: JSON.stringify({ phase: next.phase }) } });
+        });
+        return this.snapshot(code, token);
+      } catch (error) {
+        if (!this.isRetryableWriteConflict(error) || attempt === 15) throw error;
       }
-      await tx.gameEvent.create({ data: { roomId: room.id, sessionId: next.id, type: 'STATE_CHANGED', stateVersion: next.stateVersion, publicJson: JSON.stringify({ phase: next.phase }) } });
-    });
-    return this.snapshot(code, token);
+    }
+    throw new Error('CONCURRENT_STATE_RETRY_EXHAUSTED');
   }
 
   async expireDue(now = Date.now()): Promise<string[]> {
@@ -189,6 +196,12 @@ export class RoomsService {
 
   private timerData(state: GameState) {
     return { phaseVersion: state.phaseVersion, phaseStartedAt: new Date(state.timer.phaseStartedAt), phaseDeadlineAt: state.timer.phaseDeadlineAt ? new Date(state.timer.phaseDeadlineAt) : null, remainingDuration: state.timer.remainingDuration, pausedAt: state.timer.pausedAt ? new Date(state.timer.pausedAt) : null, timerStatus: state.timer.status, extensionCount: state.timer.extensionCount };
+  }
+
+  private isRetryableWriteConflict(error: unknown) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes('STALE_STATE_VERSION') || message.includes('SQLITE_BUSY') || code === 'P2034';
   }
 
   get gameEngine() { return this.engine; }

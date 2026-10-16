@@ -83,9 +83,9 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 - [ ] Unit-test all timer policies, pause/resume/extension, expiry races, and restart recovery.
 - [ ] Test every valid and invalid state transition.
 - [ ] Test secret-data filtering for every role and phase.
-- [ ] Test duplicate and simultaneous submissions.
+- [x] Test duplicate and simultaneous submissions with real SQLite persistence for 5–10 players.
 - [ ] Test reconnect, host disconnect, and state synchronization.
-- [ ] Simulate complete games for player counts 5, 6, 7, 8, 9, and 10.
+- [x] Simulate complete Good/Evil games for player counts 5, 6, 7, 8, 9, and 10, including both assassination outcomes.
 - [ ] Add integration tests for REST and Socket.IO flows.
 
 ## Delivery
