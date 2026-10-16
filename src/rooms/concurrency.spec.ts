@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../prisma.service';
+import { GameGateway } from './game.gateway';
 import { RoomsService } from './rooms.service';
 
 interface TestPlayer { playerId: string; rejoinToken: string }
@@ -103,6 +104,32 @@ describe('concurrent room actions with real SQLite persistence', () => {
     expect(actionResult).toMatchObject({ status: 'rejected', reason: expect.objectContaining({ message: 'ACTION_DEADLINE_EXPIRED' }) });
 
     await rooms.expireDue(deadline);
+    const state = await rooms.loadState(authenticated.room.id);
+    expect(state.phase).toBe('VOTE_RESULT');
+    expect(state.approvalVotes).toHaveLength(5);
+    expect(state.approvalVotes.every((vote) => vote.automatic && !vote.approve)).toBe(true);
+  }, 20_000);
+
+  it('recovers an overdue persisted phase immediately after a server restart', async () => {
+    const room = await startedRoom();
+    await forceVoting(room.code, room.players[0].rejoinToken);
+    await rooms.mutate(room.code, room.players[0].rejoinToken, (state) => {
+      state.timer.phaseStartedAt = 0;
+      state.timer.phaseDeadlineAt = 1;
+      state.timer.remainingDuration = 1;
+      return state;
+    });
+    const authenticated = await rooms.authenticate(room.code, room.players[0].rejoinToken);
+
+    await prisma.onModuleDestroy();
+    prisma = new PrismaService({ datasources: { db: { url: `file:${databasePath}` } } });
+    await prisma.onModuleInit();
+    rooms = new RoomsService(prisma);
+    const gateway = new GameGateway(rooms);
+    (gateway as any).server = { to: () => ({ emit: () => undefined }) };
+    await gateway.onApplicationBootstrap();
+    gateway.onModuleDestroy();
+
     const state = await rooms.loadState(authenticated.room.id);
     expect(state.phase).toBe('VOTE_RESULT');
     expect(state.approvalVotes).toHaveLength(5);

@@ -1,13 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApprovalDto, AssassinationDto, CreateRoomDto, JoinRoomDto, QuestDto, ReadyDto, StartGameDto, TeamDto, TimerDto, TokenDto } from './dto';
 import { RoomsService } from './rooms.service';
 
 @Controller('rooms')
 export class RoomsController {
-  constructor(private readonly rooms: RoomsService) {}
+  constructor(@Inject(RoomsService) private readonly rooms: RoomsService) {}
   @Post() create(@Body() body: CreateRoomDto) { return this.rooms.create(body.nickname); }
   @Post('join') join(@Body() body: JoinRoomDto) { return this.rooms.join(body.code, body.nickname); }
   @Get(':code') lobby(@Param('code') code: string, @Query('token') token: string) { return this.rooms.lobby(code, token); }
+  @Get(':code/snapshot') snapshot(@Param('code') code: string, @Query('token') token: string) { return this.rooms.snapshot(code, token); }
   @Post(':code/ready') ready(@Param('code') code: string, @Body() body: ReadyDto) { return this.rooms.ready(code, body.token, body.ready); }
   @Post(':code/start') start(@Param('code') code: string, @Body() body: StartGameDto) { return this.rooms.start(code, body.token, body.testMode ?? false); }
   @Post(':code/test/advance') advanceTest(@Param('code') code: string, @Body() body: TokenDto) { return this.rooms.advanceTest(code, body.token); }

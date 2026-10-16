@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { customAlphabet } from 'nanoid';
 import { PrismaService } from '../prisma.service';
 import { GameEngine } from '../game/engine';
@@ -11,7 +11,7 @@ const roomCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 @Injectable()
 export class RoomsService {
   private readonly engine = new GameEngine();
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   private hash(token: string) {
     return createHash('sha256').update(`${token}:${process.env.REJOIN_TOKEN_PEPPER ?? 'development-only-pepper'}`).digest('hex');
@@ -53,6 +53,20 @@ export class RoomsService {
     const player = room.players.find((item) => item.rejoinTokenHash === this.hash(token));
     if (!player) throw new Error('UNAUTHORIZED_PLAYER');
     return { room, player };
+  }
+
+  async setConnected(code: string, token: string, connected: boolean) {
+    const { room, player } = await this.authenticate(code, token);
+    await this.prisma.player.update({ where: { id: player.id }, data: { connected } });
+    return { code: room.code, playerId: player.id };
+  }
+
+  async setPlayerConnected(playerId: string, connected: boolean) {
+    await this.prisma.player.updateMany({ where: { id: playerId }, data: { connected } });
+  }
+
+  async resetConnections() {
+    await this.prisma.player.updateMany({ data: { connected: false } });
   }
 
   async lobby(code: string, token: string) {
@@ -190,7 +204,8 @@ export class RoomsService {
     const { room, player } = await this.authenticate(code, token);
     if (room.status === 'LOBBY') return { public: await this.lobby(code, token), private: null };
     const state = await this.loadState(room.id);
-    const publicState = { ...state, assignments: undefined, questVotes: undefined, acknowledgedPlayerIds: undefined, approvalVotes: state.phase === 'TEAM_VOTING' ? state.approvalVotes.map(() => ({ submitted: true })) : state.approvalVotes };
+    const connectionByPlayer = new Map(room.players.map((item) => [item.id, item.connected]));
+    const publicState = { ...state, players: state.players.map((item) => ({ ...item, connected: connectionByPlayer.get(item.id) ?? false })), assignments: undefined, questVotes: undefined, acknowledgedPlayerIds: undefined, approvalVotes: state.phase === 'TEAM_VOTING' ? state.approvalVotes.map(() => ({ submitted: true })) : state.approvalVotes };
     return { public: publicState, private: this.engine.privateInfo(state, player.id), serverNow: Date.now(), selfPlayerId: player.id, isHost: room.hostPlayerId === player.id };
   }
 

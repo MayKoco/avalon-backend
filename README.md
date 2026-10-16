@@ -41,6 +41,13 @@ SQLite data is kept in the `avalon-data` volume. The container applies committed
 - State changes use optimistic state versions and SQLite transactions.
 - Phase expiration is processed by the server and remains tied to persisted deadlines.
 
+## Sync and recovery
+
+- `GET /api/rooms/:code/snapshot?token=...` returns the authenticated player's public and private views.
+- Socket.IO clients authenticate with `game:sync`; reconnecting with the same token restores the same player identity.
+- `room:presence_changed` tells room clients to sync updated online/offline presence. Multiple sockets for one player are tracked independently.
+- On startup, all stale connections are marked offline and overdue persisted timers are resolved immediately.
+
 ## Test Mode
 
 Set `ALLOW_TEST_MODE=true`. A host may then start with fewer than five real players; the server adds clearly marked Bot seats until the room has five players. Only the host receives the test-advance control, which completes missing simulated actions one phase at a time. Normal rooms still enforce 5–10 real players.

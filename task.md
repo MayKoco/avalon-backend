@@ -22,7 +22,7 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 - [x] Protect secret fields from public snapshots and logs.
 - [x] Use transactions and optimistic versions for sensitive state transitions.
 - [x] Persist phase deadlines, pause state, remaining duration, and completed-game history.
-- [ ] Resolve overdue timers safely after a server restart.
+- [x] Resolve overdue timers safely and immediately after a server restart.
 
 ## Domain Game Engine
 
@@ -63,30 +63,30 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 - [ ] Implement room creation, join, leave, ready, removal, configuration, and start commands.
 - [ ] Implement typed client events for role acknowledgement, team proposal, approval vote, quest submission, assassination, timer controls, and sync.
 - [ ] Implement typed server events for room updates, public/private snapshots, phases, timers, progress, results, reconnect, disconnect, and errors.
-- [ ] Send per-player private snapshots without leaking other roles or quest submissions.
-- [ ] Never reveal approval votes before voting closes.
-- [ ] Add Socket.IO acknowledgement responses and duplicate-action protection.
+- [x] Send per-player private snapshots without leaking other roles or quest submissions.
+- [x] Never reveal approval votes before voting closes.
+- [x] Add Socket.IO acknowledgement responses and duplicate-action protection.
 - [ ] Detect the usable LAN address and expose room join information for QR generation.
 
 ## Reconnect and Recovery
 
-- [ ] Issue and hash secure per-player rejoin tokens.
-- [ ] Restore identity, current phase, submitted-action state, and timer state after refresh or reconnect.
-- [ ] Mark online/offline state without exposing hidden information.
-- [ ] Handle host disconnect without invalidating the game.
-- [ ] Recover active sessions and resolve overdue phases after restart.
+- [x] Issue and hash secure per-player rejoin tokens.
+- [x] Restore identity, current phase, submitted-action state, and timer state after refresh or reconnect.
+- [x] Mark online/offline state without exposing hidden information, including multiple sockets for one player.
+- [x] Handle host disconnect without invalidating the game.
+- [x] Recover active sessions and resolve overdue phases after restart.
 
 ## Automated Verification
 
 - [x] Add an explicitly labeled host-only Test Mode that fills Bot seats to five and advances simulated actions without weakening normal-room validation.
 - [x] Unit-test core rules, role distribution, role knowledge, quest thresholds, voting, and timeout transitions.
-- [ ] Unit-test all timer policies, pause/resume/extension, expiry races, and restart recovery.
+- [x] Unit-test all timer policies, pause/resume/extension, expiry races, and restart recovery.
 - [ ] Test every valid and invalid state transition.
 - [ ] Test secret-data filtering for every role and phase.
 - [x] Test duplicate and simultaneous submissions with real SQLite persistence for 5–10 players.
-- [ ] Test reconnect, host disconnect, and state synchronization.
+- [x] Test reconnect, host disconnect, and state synchronization.
 - [x] Simulate complete Good/Evil games for player counts 5, 6, 7, 8, 9, and 10, including both assassination outcomes.
-- [ ] Add integration tests for REST and Socket.IO flows.
+- [x] Add integration tests for REST and Socket.IO flows.
 
 ## Delivery
 
