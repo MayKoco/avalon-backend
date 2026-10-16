@@ -201,6 +201,89 @@ describe('REST and Socket.IO transport E2E', () => {
     expect(restored).toMatchObject({ success: true, data: { selfPlayerId: host.playerId, isHost: true, public: { phase: 'ROLE_REVEAL' } } });
   }, 20_000);
 
+  it('supports lobby removal, leaving, seat compaction, and host transfer', async () => {
+    const [host, second, third] = await createPlayers(3);
+    const forbidden = await request(`/rooms/${host.code}/players/${third.playerId}/remove`, 'POST', { token: second.rejoinToken });
+    expect(forbidden).toMatchObject({ status: 400, json: { success: false, error: { code: 'HOST_ONLY' } } });
+
+    const removed = await request(`/rooms/${host.code}/players/${third.playerId}/remove`, 'POST', { token: host.rejoinToken });
+    expect(removed.json.data.players.map((player: any) => player.id)).toEqual([host.playerId, second.playerId]);
+    expect(removed.json.data.players.map((player: any) => player.seat)).toEqual([0, 1]);
+
+    const hostLeft = await request(`/rooms/${host.code}/leave`, 'POST', { token: host.rejoinToken });
+    expect(hostLeft.json.data).toMatchObject({ roomDeleted: false, playerRemoved: true });
+    const transferred = await request(`/rooms/${host.code}?token=${encodeURIComponent(second.rejoinToken)}`);
+    expect(transferred.json.data).toMatchObject({ hostPlayerId: second.playerId, selfPlayerId: second.playerId });
+    expect(transferred.json.data.players).toHaveLength(1);
+    expect(transferred.json.data.players[0].seat).toBe(0);
+
+    const finalLeave = await request(`/rooms/${host.code}/leave`, 'POST', { token: second.rejoinToken });
+    expect(finalLeave.json.data).toMatchObject({ roomDeleted: true, playerRemoved: true });
+    const deleted = await request(`/rooms/${host.code}?token=${encodeURIComponent(second.rejoinToken)}`);
+    expect(deleted).toMatchObject({ status: 400, json: { success: false, error: { code: 'ROOM_NOT_FOUND' } } });
+  });
+
+  it('retains human players and completed history through play again', async () => {
+    const [host] = await createPlayers(1);
+    await request(`/rooms/${host.code}/start`, 'POST', { token: host.rejoinToken, testMode: true });
+    const authenticated = await rooms.authenticate(host.code, host.rejoinToken);
+    await rooms.mutate(host.code, host.rejoinToken, (state) => {
+      state.phase = 'GAME_OVER';
+      state.phaseVersion++;
+      state.winner = 'GOOD';
+      state.timer = { status: 'DISABLED', phaseStartedAt: Date.now(), phaseDeadlineAt: null, remainingDuration: null, pausedAt: null, extensionCount: 0 };
+      return state;
+    });
+
+    const replay = await request(`/rooms/${host.code}/play-again`, 'POST', { token: host.rejoinToken });
+    expect(replay.json.data).toMatchObject({ public: { status: 'LOBBY', testMode: false, hostPlayerId: host.playerId } });
+    expect(replay.json.data.public.players).toHaveLength(1);
+    expect(replay.json.data.public.players[0]).toMatchObject({ id: host.playerId, seat: 0, ready: false, isBot: false });
+    expect(await prisma.gameSession.count({ where: { roomId: authenticated.room.id, status: 'COMPLETED' } })).toBe(1);
+
+    await request(`/rooms/${host.code}/start`, 'POST', { token: host.rejoinToken, testMode: true });
+    expect(await prisma.gameSession.count({ where: { roomId: authenticated.room.id } })).toBe(2);
+  }, 20_000);
+
+  it('supports typed Socket.IO room lifecycle and timer commands', async () => {
+    const [host] = await createPlayers(1);
+    const hostSocket = await connectSocket();
+    await emitAck(hostSocket, 'game:sync', { code: host.code, token: host.rejoinToken });
+    const guestSocket = await connectSocket();
+    const joined = await emitAck<any>(guestSocket, 'room:join', { code: host.code, nickname: 'Socket Guest' });
+    expect(joined).toMatchObject({ success: true, data: { code: host.code } });
+    const guest = joined.data as Identity;
+    const ready = await emitAck<any>(guestSocket, 'player:ready', { code: host.code, token: guest.rejoinToken, ready: true });
+    expect(ready.success).toBe(true);
+    const left = await emitAck<any>(guestSocket, 'room:leave', { code: host.code, token: guest.rejoinToken });
+    expect(left).toMatchObject({ success: true, data: { playerRemoved: true } });
+    expect((await snapshot(host)).public.players).toHaveLength(1);
+
+    const started = await emitAck<any>(hostSocket, 'game:start', { code: host.code, token: host.rejoinToken, testMode: true });
+    expect(started.data.public.phase).toBe('ROLE_REVEAL');
+    const paused = await emitAck<any>(hostSocket, 'timer:pause', { code: host.code, token: host.rejoinToken });
+    expect(paused.data.public.timer.status).toBe('PAUSED');
+    const beforeExtension = paused.data.public.timer.remainingDuration;
+    const extended = await emitAck<any>(hostSocket, 'timer:extend', { code: host.code, token: host.rejoinToken, seconds: 30 });
+    expect(extended.data.public.timer.remainingDuration).toBe(beforeExtension + 30_000);
+    const resumed = await emitAck<any>(hostSocket, 'timer:resume', { code: host.code, token: host.rejoinToken });
+    expect(resumed.data.public.timer.status).toBe('RUNNING');
+  }, 20_000);
+
+  it('broadcasts REST state changes to connected Socket.IO clients', async () => {
+    const [host] = await createPlayers(1);
+    const socket = await connectSocket();
+    await emitAck(socket, 'game:sync', { code: host.code, token: host.rejoinToken });
+    const changed = new Promise<any>((resolveChange, reject) => {
+      const timeout = setTimeout(() => reject(new Error('REST_BROADCAST_TIMEOUT')), 3_000);
+      socket.once('game:phase_changed', (event) => { clearTimeout(timeout); resolveChange(event); });
+    });
+    const started = await request(`/rooms/${host.code}/start`, 'POST', { token: host.rejoinToken, testMode: true });
+    expect(started.json.success).toBe(true);
+    const event = await changed;
+    expect(event.stateVersion).toBe(started.json.data.public.stateVersion);
+  });
+
   it('returns structured transport errors for invalid authentication and validation', async () => {
     const [host] = await createPlayers(1);
     const invalid = await request(`/rooms/${host.code}?token=invalid`);

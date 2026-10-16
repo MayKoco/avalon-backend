@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma.service';
 import { GameEngine } from '../game/engine';
 import { GameState } from '../game/types';
 import { QUEST_SIZES } from '../game/rules';
+import { publicGameState } from '../game/views';
 
 const roomCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
@@ -78,6 +79,42 @@ export class RoomsService {
     const { player } = await this.authenticate(code, token);
     await this.prisma.player.update({ where: { id: player.id }, data: { ready } });
     return this.lobby(code, token);
+  }
+
+  async leave(code: string, token: string) {
+    const { room, player } = await this.authenticate(code, token);
+    if (room.status !== 'LOBBY') {
+      await this.prisma.player.update({ where: { id: player.id }, data: { connected: false } });
+      return { roomDeleted: false, playerRemoved: false, disconnected: true };
+    }
+    return this.removeLobbyPlayer(room.id, player.id, true);
+  }
+
+  async removePlayer(code: string, token: string, targetPlayerId: string) {
+    const { room, player } = await this.authenticate(code, token);
+    if (room.status !== 'LOBBY') throw new Error('LOBBY_ONLY');
+    if (room.hostPlayerId !== player.id) throw new Error('HOST_ONLY');
+    if (targetPlayerId === player.id) throw new Error('HOST_CANNOT_REMOVE_SELF');
+    if (!room.players.some((item) => item.id === targetPlayerId)) throw new Error('PLAYER_NOT_FOUND');
+    await this.removeLobbyPlayer(room.id, targetPlayerId, false);
+    return this.lobby(code, token);
+  }
+
+  async playAgain(code: string, token: string) {
+    const { room, player } = await this.authenticate(code, token);
+    if (room.hostPlayerId !== player.id) throw new Error('HOST_ONLY');
+    const state = await this.loadState(room.id);
+    if (state.phase !== 'GAME_OVER') throw new Error('GAME_NOT_FINISHED');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.player.deleteMany({ where: { roomId: room.id, isBot: true } });
+      const remaining = await tx.player.findMany({ where: { roomId: room.id, isBot: false }, orderBy: { seat: 'asc' } });
+      for (let seat = 0; seat < remaining.length; seat++) {
+        await tx.player.update({ where: { id: remaining[seat].id }, data: { seat, ready: false } });
+      }
+      await tx.gameRoom.update({ where: { id: room.id }, data: { status: 'LOBBY', stateVersion: 0, testMode: false } });
+      await tx.gameEvent.create({ data: { roomId: room.id, sessionId: state.id, type: 'PLAY_AGAIN', stateVersion: state.stateVersion, publicJson: JSON.stringify({ previousWinner: state.winner }) } });
+    });
+    return this.snapshot(code, token);
   }
 
   async start(code: string, token: string, testMode = false) {
@@ -205,7 +242,7 @@ export class RoomsService {
     if (room.status === 'LOBBY') return { public: await this.lobby(code, token), private: null };
     const state = await this.loadState(room.id);
     const connectionByPlayer = new Map(room.players.map((item) => [item.id, item.connected]));
-    const publicState = { ...state, players: state.players.map((item) => ({ ...item, connected: connectionByPlayer.get(item.id) ?? false })), assignments: undefined, questVotes: undefined, acknowledgedPlayerIds: undefined, approvalVotes: state.phase === 'TEAM_VOTING' ? state.approvalVotes.map(() => ({ submitted: true })) : state.approvalVotes };
+    const publicState = publicGameState(state, connectionByPlayer);
     return { public: publicState, private: this.engine.privateInfo(state, player.id), serverNow: Date.now(), selfPlayerId: player.id, isHost: room.hostPlayerId === player.id };
   }
 
@@ -217,6 +254,28 @@ export class RoomsService {
     const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
     const message = error instanceof Error ? error.message : String(error);
     return message.includes('STALE_STATE_VERSION') || message.includes('SQLITE_BUSY') || code === 'P2034';
+  }
+
+  private async removeLobbyPlayer(roomId: string, playerId: string, allowHostTransfer: boolean) {
+    return this.prisma.$transaction(async (tx) => {
+      const room = await tx.gameRoom.findUnique({ where: { id: roomId }, include: { players: { orderBy: { seat: 'asc' } } } });
+      if (!room) throw new Error('ROOM_NOT_FOUND');
+      if (room.status !== 'LOBBY') throw new Error('LOBBY_ONLY');
+      const target = room.players.find((item) => item.id === playerId);
+      if (!target) throw new Error('PLAYER_NOT_FOUND');
+      if (room.hostPlayerId === playerId && !allowHostTransfer) throw new Error('HOST_CANNOT_REMOVE_SELF');
+      await tx.player.delete({ where: { id: playerId } });
+      const remaining = room.players.filter((item) => item.id !== playerId);
+      if (remaining.length === 0) {
+        await tx.gameRoom.delete({ where: { id: roomId } });
+        return { roomDeleted: true, playerRemoved: true, disconnected: true };
+      }
+      for (let seat = 0; seat < remaining.length; seat++) {
+        if (remaining[seat].seat !== seat) await tx.player.update({ where: { id: remaining[seat].id }, data: { seat } });
+      }
+      if (room.hostPlayerId === playerId) await tx.gameRoom.update({ where: { id: roomId }, data: { hostPlayerId: remaining[0].id } });
+      return { roomDeleted: false, playerRemoved: true, disconnected: true };
+    });
   }
 
   get gameEngine() { return this.engine; }

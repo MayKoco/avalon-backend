@@ -48,6 +48,13 @@ SQLite data is kept in the `avalon-data` volume. The container applies committed
 - `room:presence_changed` tells room clients to sync updated online/offline presence. Multiple sockets for one player are tracked independently.
 - On startup, all stale connections are marked offline and overdue persisted timers are resolved immediately.
 
+## Room lifecycle
+
+- Players may leave a lobby; seats are compacted and host ownership transfers to the next seated player.
+- The host may remove another player only while the room is in the lobby.
+- Leaving an active game marks the player offline without deleting their role or game history.
+- After `GAME_OVER`, the host can use `POST /api/rooms/:code/play-again` or `game:play_again`. Human players remain, test Bots are removed, and the completed session stays in history.
+
 ## Test Mode
 
 Set `ALLOW_TEST_MODE=true`. A host may then start with fewer than five real players; the server adds clearly marked Bot seats until the room has five players. Only the host receives the test-advance control, which completes missing simulated actions one phase at a time. Normal rooms still enforce 5–10 real players.

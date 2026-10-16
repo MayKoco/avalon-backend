@@ -38,7 +38,7 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 - [x] Implement five consecutive rejected proposals as an Evil victory.
 - [x] Implement secret quest submissions and aggregate-only results.
 - [x] Implement three-success assassination flow and all victory conditions.
-- [ ] Implement play-again while retaining the room and players.
+- [x] Implement play-again while retaining human players and completed-game history.
 
 ## Authoritative State Machine
 
@@ -60,8 +60,9 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 
 ## REST, Socket.IO, and LAN Support
 
-- [ ] Implement room creation, join, leave, ready, removal, configuration, and start commands.
-- [ ] Implement typed client events for role acknowledgement, team proposal, approval vote, quest submission, assassination, timer controls, and sync.
+- [x] Implement room creation, join, leave, ready, host removal, and start commands.
+- [ ] Implement pre-game role and timer configuration.
+- [x] Implement typed client events for room lifecycle, role acknowledgement, team proposal, approval vote, quest submission, assassination, timer controls, play again, and sync.
 - [ ] Implement typed server events for room updates, public/private snapshots, phases, timers, progress, results, reconnect, disconnect, and errors.
 - [x] Send per-player private snapshots without leaking other roles or quest submissions.
 - [x] Never reveal approval votes before voting closes.
@@ -82,7 +83,7 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 - [x] Unit-test core rules, role distribution, role knowledge, quest thresholds, voting, and timeout transitions.
 - [x] Unit-test all timer policies, pause/resume/extension, expiry races, and restart recovery.
 - [ ] Test every valid and invalid state transition.
-- [ ] Test secret-data filtering for every role and phase.
+- [x] Test secret-data filtering for every role and phase.
 - [x] Test duplicate and simultaneous submissions with real SQLite persistence for 5–10 players.
 - [x] Test reconnect, host disconnect, and state synchronization.
 - [x] Simulate complete Good/Evil games for player counts 5, 6, 7, 8, 9, and 10, including both assassination outcomes.
