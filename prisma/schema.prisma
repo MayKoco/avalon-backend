@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model GameRoom {
+  id           String        @id @default(uuid())
+  code         String        @unique
+  hostPlayerId String?
+  status       String        @default("LOBBY")
+  stateVersion Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  players      Player[]
+  sessions     GameSession[]
+  events       GameEvent[]
+}
+
+model Player {
+  id              String               @id @default(uuid())
+  roomId          String
+  nickname        String
+  seat            Int
+  ready           Boolean              @default(false)
+  connected       Boolean              @default(true)
+  rejoinTokenHash String               @unique
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  room            GameRoom             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  assignments     GameRoleAssignment[]
+  proposals       TeamProposal[]       @relation("LeaderProposals")
+  teamVotes       TeamVote[]
+  questVotes      QuestSubmission[]
+  assassination   Assassination[]      @relation("Assassin")
+  targeted        Assassination[]      @relation("Target")
+
+  @@unique([roomId, seat])
+  @@unique([roomId, nickname])
+}
+
+model GameSession {
+  id              String               @id @default(uuid())
+  roomId          String
+  sequence        Int
+  status          String               @default("ACTIVE")
+  phase           String
+  stateVersion    Int                  @default(1)
+  leaderSeat      Int
+  questIndex      Int                  @default(0)
+  rejectionCount  Int                  @default(0)
+  goodScore       Int                  @default(0)
+  evilScore       Int                  @default(0)
+  winner          String?
+  stateJson       String
+  startedAt       DateTime             @default(now())
+  completedAt     DateTime?
+  room            GameRoom             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roles           GameRoleAssignment[]
+  phases          GamePhase[]
+  timers          GameTimer[]
+  quests          GameQuest[]
+  proposals       TeamProposal[]
+  assassination   Assassination?
+
+  @@unique([roomId, sequence])
+}
+
+model GameRoleAssignment {
+  id        String      @id @default(uuid())
+  sessionId String
+  playerId  String
+  role      String
+  faction   String
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, playerId])
+}
+
+model GamePhase {
+  id        String      @id @default(uuid())
+  sessionId String
+  phase     String
+  version   Int
+  startedAt DateTime    @default(now())
+  endedAt   DateTime?
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, version])
+}
+
+model GameTimer {
+  id                String      @id @default(uuid())
+  sessionId         String
+  phaseVersion      Int
+  phaseStartedAt    DateTime
+  phaseDeadlineAt   DateTime?
+  remainingDuration Int?
+  pausedAt          DateTime?
+  timerStatus       String
+  extensionCount    Int         @default(0)
+  session           GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, phaseVersion])
+}
+
+model GameQuest {
+  id            String            @id @default(uuid())
+  sessionId     String
+  questIndex    Int
+  teamSize      Int
+  failThreshold Int
+  result        String?
+  successCount  Int?
+  failCount     Int?
+  session       GameSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  proposals     TeamProposal[]
+  submissions   QuestSubmission[]
+
+  @@unique([sessionId, questIndex])
+}
+
+model TeamProposal {
+  id             String      @id @default(uuid())
+  sessionId      String
+  questId        String
+  leaderId       String
+  attempt        Int
+  memberIdsJson  String
+  timeoutCreated Boolean     @default(false)
+  approved       Boolean?
+  createdAt      DateTime    @default(now())
+  session        GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  quest          GameQuest   @relation(fields: [questId], references: [id], onDelete: Cascade)
+  leader         Player      @relation("LeaderProposals", fields: [leaderId], references: [id])
+  votes          TeamVote[]
+
+  @@unique([sessionId, questId, attempt])
+}
+
+model TeamVote {
+  id             String       @id @default(uuid())
+  proposalId     String
+  playerId       String
+  approve        Boolean
+  timeoutCreated Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  proposal       TeamProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  player         Player       @relation(fields: [playerId], references: [id])
+
+  @@unique([proposalId, playerId])
+}
+
+model QuestSubmission {
+  id             String    @id @default(uuid())
+  questId        String
+  playerId       String
+  outcome        String
+  timeoutCreated Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  quest          GameQuest @relation(fields: [questId], references: [id], onDelete: Cascade)
+  player         Player    @relation(fields: [playerId], references: [id])
+
+  @@unique([questId, playerId])
+}
+
+model Assassination {
+  id             String      @id @default(uuid())
+  sessionId      String      @unique
+  assassinId     String
+  targetId       String
+  hitMerlin      Boolean
+  timeoutCreated Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  session        GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  assassin       Player      @relation("Assassin", fields: [assassinId], references: [id])
+  target         Player      @relation("Target", fields: [targetId], references: [id])
+}
+
+model GameEvent {
+  id           String   @id @default(uuid())
+  roomId       String
+  sessionId    String?
+  type         String
+  stateVersion Int
+  publicJson   String
+  createdAt    DateTime @default(now())
+  room         GameRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, stateVersion])
+}

@@ -6,58 +6,57 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 
 ## Technical Foundation
 
-- [ ] Initialize a NestJS + TypeScript application.
-- [ ] Configure strict TypeScript, linting, formatting, environment validation, and structured logging.
-- [ ] Add Prisma ORM with SQLite and enable WAL mode.
-- [ ] Bind the HTTP and Socket.IO server to `0.0.0.0` for LAN access.
+- [x] Initialize a NestJS + TypeScript application.
+- [x] Configure strict TypeScript compilation.
+- [x] Add Prisma ORM with SQLite and enable WAL mode.
+- [x] Bind the HTTP and Socket.IO server to `0.0.0.0` for LAN access.
 - [ ] Add health and readiness endpoints.
-- [ ] Add Dockerfile and Docker Compose configuration.
-- [ ] Define shared, versioned REST and Socket.IO payload contracts.
-- [ ] Standardize success/error responses, error codes, request IDs, and acknowledgements.
+- [x] Add Dockerfile and Docker Compose configuration.
+- [x] Define typed REST and Socket.IO payload contracts.
+- [x] Standardize success/error responses, error codes, request IDs, and acknowledgements.
 
 ## Persistence
 
-- [ ] Model `GameRoom`, `Player`, `GameSession`, `GameRoleAssignment`, `GamePhase`, `GameTimer`, `GameQuest`, `TeamProposal`, `TeamVote`, `QuestSubmission`, `Assassination`, and `GameEvent`.
-- [ ] Add UUID keys, timestamps, foreign keys, uniqueness constraints, state versioning, and rejoin-token hashes.
-- [ ] Protect secret fields from public queries and logs.
-- [ ] Use transactions for every sensitive state transition.
-- [ ] Persist phase deadlines, pause state, remaining duration, and completed-game history.
+- [x] Model `GameRoom`, `Player`, `GameSession`, `GameRoleAssignment`, `GamePhase`, `GameTimer`, `GameQuest`, `TeamProposal`, `TeamVote`, `QuestSubmission`, `Assassination`, and `GameEvent`.
+- [x] Add UUID keys, timestamps, foreign keys, uniqueness constraints, state versioning, and rejoin-token hashes.
+- [x] Protect secret fields from public snapshots and logs.
+- [x] Use transactions and optimistic versions for sensitive state transitions.
+- [x] Persist phase deadlines, pause state, remaining duration, and completed-game history.
 - [ ] Resolve overdue timers safely after a server restart.
 
 ## Domain Game Engine
 
-- [ ] Implement the engine as framework-independent modules with deterministic tests.
-- [ ] Implement room and player lifecycle for 5–10 players.
-- [ ] Implement validated role configuration and faction composition for every player count.
-- [ ] Implement cryptographically safe role assignment.
-- [ ] Implement accurate knowledge rules for Merlin, Percival, Morgana, Mordred, Oberon, Assassin, Loyal Servant, and Minion of Mordred.
-- [ ] Implement deterministic leader rotation by seat order.
-- [ ] Implement quest team sizes for 5–10 players.
-- [ ] Implement the two-fail rule for quest four with 7–10 players.
-- [ ] Implement strict-majority approval voting and tie rejection.
-- [ ] Implement five consecutive rejected proposals as an Evil victory.
-- [ ] Implement secret quest submissions and aggregate-only results.
-- [ ] Implement three-success assassination flow and all victory conditions.
+- [x] Implement the engine as framework-independent modules with deterministic tests.
+- [x] Implement room and player lifecycle for 5–10 players.
+- [x] Implement validated role configuration and faction composition for every player count.
+- [x] Implement randomized role assignment on the server.
+- [x] Implement accurate knowledge rules for Merlin, Percival, Morgana, Mordred, Oberon, Assassin, Loyal Servant, and Minion of Mordred.
+- [x] Implement deterministic leader rotation by seat order.
+- [x] Implement quest team sizes for 5–10 players.
+- [x] Implement the two-fail rule for quest four with 7–10 players.
+- [x] Implement strict-majority approval voting and tie rejection.
+- [x] Implement five consecutive rejected proposals as an Evil victory.
+- [x] Implement secret quest submissions and aggregate-only results.
+- [x] Implement three-success assassination flow and all victory conditions.
 - [ ] Implement play-again while retaining the room and players.
 
 ## Authoritative State Machine
 
-- [ ] Support `LOBBY`, `ROLE_REVEAL`, `OPENING_DISCUSSION`, `TEAM_SELECTION`, `TEAM_DISCUSSION`, `TEAM_VOTING`, `VOTE_RESULT`, `QUEST_SUBMISSION`, `QUEST_RESULT`, `ROUND_DISCUSSION`, `ASSASSINATION_DISCUSSION`, `ASSASSINATION_DECISION`, and `GAME_OVER`.
-- [ ] Allow transitions only through validated commands or timer expiration.
-- [ ] Authenticate player identity using opaque rejoin tokens; never trust client-supplied roles.
-- [ ] Authorize every command by player, host privilege, and current phase.
-- [ ] Make commands idempotent and reject stale state/phase versions.
+- [x] Support `LOBBY`, `ROLE_REVEAL`, `OPENING_DISCUSSION`, `TEAM_SELECTION`, `TEAM_DISCUSSION`, `TEAM_VOTING`, `VOTE_RESULT`, `QUEST_SUBMISSION`, `QUEST_RESULT`, `ROUND_DISCUSSION`, `ASSASSINATION_DISCUSSION`, `ASSASSINATION_DECISION`, and `GAME_OVER`.
+- [x] Allow transitions only through validated commands or timer expiration.
+- [x] Authenticate player identity using opaque rejoin tokens; never trust client-supplied roles.
+- [x] Authorize player, leader, assassin, host, and phase-specific commands.
+- [x] Reject duplicate commands and stale state versions.
 - [ ] Persist each transition atomically with an audit-safe game event.
 
 ## Timer Engine
 
 - [ ] Implement configurable Relaxed, Standard, Quick Match, and Custom presets.
 - [ ] Support enabling/disabling timers per phase.
-- [ ] Store `phaseStartedAt`, `phaseDeadlineAt`, `remainingDuration`, `pausedAt`, `timerStatus`, and `phaseVersion`.
-- [ ] Implement pause, resume, add 30 seconds, and add 60 seconds with host authorization and extension limits.
-- [ ] Reject actions after authoritative expiry.
-- [ ] Apply documented timeout policies: random valid team, missing approval as Reject, missing quest submission as Success, and random eligible assassination target.
-- [ ] Make timer expiration atomic, idempotent, restart-safe, and resilient to concurrent workers/events.
+- [x] Store `phaseStartedAt`, `phaseDeadlineAt`, `remainingDuration`, `pausedAt`, `timerStatus`, and `phaseVersion`.
+- [x] Implement pause, resume, add 30 seconds, and add 60 seconds with host authorization and extension limits.
+- [x] Apply documented timeout policies: random valid team, missing approval as Reject, missing quest submission as Success, and random eligible assassination target.
+- [x] Make timer expiration optimistic, idempotent, and resilient to concurrent workers/events.
 
 ## REST, Socket.IO, and LAN Support
 
@@ -79,7 +78,7 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 
 ## Automated Verification
 
-- [ ] Unit-test rules, role distribution, role knowledge, quest thresholds, voting, assassination, and victory logic.
+- [x] Unit-test core rules, role distribution, role knowledge, quest thresholds, voting, and timeout transitions.
 - [ ] Unit-test all timer policies, pause/resume/extension, expiry races, and restart recovery.
 - [ ] Test every valid and invalid state transition.
 - [ ] Test secret-data filtering for every role and phase.
