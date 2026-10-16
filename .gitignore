@@ -3,5 +3,7 @@ dist
 .env
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal
 coverage
 .DS_Store
