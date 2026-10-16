@@ -26,6 +26,10 @@ describe('Avalon rules', () => {
 });
 
 describe('Game engine', () => {
+  it('marks test sessions and honors the requested first leader', () => {
+    const engine = new GameEngine(); const state = engine.start(players(5), undefined, 0, true, 0);
+    expect(state.testMode).toBe(true); expect(state.leaderSeat).toBe(0);
+  });
   it('blocks Good players from submitting Fail', () => {
     const engine = new GameEngine(); const state = engine.start(players(5));
     state.phase = 'QUEST_SUBMISSION'; state.proposedTeam = [state.assignments.find((item) => item.faction === 'GOOD')!.playerId];

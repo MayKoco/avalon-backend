@@ -15,12 +15,12 @@ export const STANDARD_DURATIONS: Partial<Record<Phase, number>> = {
 };
 
 export class GameEngine {
-  start(players: GameState['players'], roles: Role[] = defaultRoles(players.length), now = Date.now()): GameState {
+  start(players: GameState['players'], roles: Role[] = defaultRoles(players.length), now = Date.now(), testMode = false, initialLeaderSeat?: number): GameState {
     if (players.length < 5 || players.length > 10) throw new Error('PLAYER_COUNT_OUT_OF_RANGE');
     const assignments = assignRoles(players.sort((a, b) => a.seat - b.seat).map((player) => player.id), roles);
-    const firstLeader = Math.floor(Math.random() * players.length);
+    const firstLeader = initialLeaderSeat ?? Math.floor(Math.random() * players.length);
     const state: GameState = {
-      id: randomUUID(), stateVersion: 1, phase: 'ROLE_REVEAL', phaseVersion: 1, players, assignments,
+      id: randomUUID(), stateVersion: 1, testMode, phase: 'ROLE_REVEAL', phaseVersion: 1, players, assignments,
       leaderSeat: firstLeader, questIndex: 0, rejectionCount: 0, goodScore: 0, evilScore: 0,
       proposedTeam: [], proposalAutomatic: false, approvalVotes: [], questVotes: [], quests: [],
       acknowledgedPlayerIds: [], timer: this.timerFor('ROLE_REVEAL', now),

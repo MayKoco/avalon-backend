@@ -78,6 +78,7 @@ Build a production-quality, server-authoritative LAN multiplayer backend for a 5
 
 ## Automated Verification
 
+- [x] Add an explicitly labeled host-only Test Mode that fills Bot seats to five and advances simulated actions without weakening normal-room validation.
 - [x] Unit-test core rules, role distribution, role knowledge, quest thresholds, voting, and timeout transitions.
 - [ ] Unit-test all timer policies, pause/resume/extension, expiry races, and restart recovery.
 - [ ] Test every valid and invalid state transition.

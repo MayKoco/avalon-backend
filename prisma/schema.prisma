@@ -13,6 +13,7 @@ model GameRoom {
   hostPlayerId String?
   status       String        @default("LOBBY")
   stateVersion Int           @default(0)
+  testMode     Boolean       @default(false)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   players      Player[]
@@ -27,6 +28,7 @@ model Player {
   seat            Int
   ready           Boolean              @default(false)
   connected       Boolean              @default(true)
+  isBot           Boolean              @default(false)
   rejoinTokenHash String               @unique
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt

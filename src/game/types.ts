@@ -16,6 +16,7 @@ export interface EnginePlayer {
   seat: number;
   connected: boolean;
   ready: boolean;
+  isBot?: boolean;
 }
 
 export interface Assignment { playerId: string; role: Role; faction: Faction }
@@ -44,6 +45,7 @@ export interface TimerState {
 export interface GameState {
   id: string;
   stateVersion: number;
+  testMode: boolean;
   phase: Phase;
   phaseVersion: number;
   players: EnginePlayer[];

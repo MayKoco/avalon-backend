@@ -19,7 +19,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     catch (error) { return this.failure(error); }
   }
   @SubscribeMessage('player:ready') ready(@ConnectedSocket() socket: Socket, @MessageBody() body: Command & { ready: boolean }) { return this.run(socket, body, () => this.rooms.ready(body.code, body.token, body.ready)); }
-  @SubscribeMessage('game:start') start(@ConnectedSocket() socket: Socket, @MessageBody() body: Command) { return this.run(socket, body, () => this.rooms.start(body.code, body.token)); }
+  @SubscribeMessage('game:start') start(@ConnectedSocket() socket: Socket, @MessageBody() body: Command & { testMode?: boolean }) { return this.run(socket, body, () => this.rooms.start(body.code, body.token, body.testMode ?? false)); }
+  @SubscribeMessage('test:advance') advanceTest(@ConnectedSocket() socket: Socket, @MessageBody() body: Command) { return this.run(socket, body, () => this.rooms.advanceTest(body.code, body.token)); }
   @SubscribeMessage('role:acknowledge') acknowledge(@ConnectedSocket() socket: Socket, @MessageBody() body: Command) { return this.mutate(socket, body, (state, id) => this.rooms.gameEngine.acknowledge(state, id)); }
   @SubscribeMessage('team:submit') team(@ConnectedSocket() socket: Socket, @MessageBody() body: Command & { playerIds: string[] }) { return this.mutate(socket, body, (state, id) => this.rooms.gameEngine.submitTeam(state, id, body.playerIds)); }
   @SubscribeMessage('vote:submit') vote(@ConnectedSocket() socket: Socket, @MessageBody() body: Command & { approve: boolean }) { return this.mutate(socket, body, (state, id) => this.rooms.gameEngine.submitApproval(state, id, body.approve)); }

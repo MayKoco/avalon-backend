@@ -4,6 +4,7 @@ import { customAlphabet } from 'nanoid';
 import { PrismaService } from '../prisma.service';
 import { GameEngine } from '../game/engine';
 import { GameState } from '../game/types';
+import { QUEST_SIZES } from '../game/rules';
 
 const roomCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
@@ -56,7 +57,7 @@ export class RoomsService {
 
   async lobby(code: string, token: string) {
     const { room, player } = await this.authenticate(code, token);
-    return { code: room.code, status: room.status, stateVersion: room.stateVersion, hostPlayerId: room.hostPlayerId, selfPlayerId: player.id, players: room.players.map(({ rejoinTokenHash: _, ...safe }) => safe) };
+    return { code: room.code, status: room.status, stateVersion: room.stateVersion, testMode: room.testMode, testModeAvailable: process.env.ALLOW_TEST_MODE === 'true' || process.env.NODE_ENV !== 'production', hostPlayerId: room.hostPlayerId, selfPlayerId: player.id, players: room.players.map(({ rejoinTokenHash: _, ...safe }) => safe) };
   }
 
   async ready(code: string, token: string, ready: boolean) {
@@ -65,24 +66,71 @@ export class RoomsService {
     return this.lobby(code, token);
   }
 
-  async start(code: string, token: string) {
-    const { room, player } = await this.authenticate(code, token);
+  async start(code: string, token: string, testMode = false) {
+    let authenticated = await this.authenticate(code, token);
+    if (testMode) {
+      if (process.env.ALLOW_TEST_MODE !== 'true' && process.env.NODE_ENV === 'production') throw new Error('TEST_MODE_DISABLED');
+      if (authenticated.room.hostPlayerId !== authenticated.player.id) throw new Error('HOST_ONLY');
+      const missingPlayers = Math.max(0, 5 - authenticated.room.players.length);
+      if (missingPlayers > 0) {
+        await this.prisma.player.createMany({ data: Array.from({ length: missingPlayers }, (_, index) => ({ roomId: authenticated.room.id, nickname: `Bot ทดสอบ ${authenticated.room.players.length + index + 1}`, seat: authenticated.room.players.length + index, ready: true, connected: false, isBot: true, rejoinTokenHash: this.hash(randomBytes(32).toString('base64url')) })) });
+        authenticated = await this.authenticate(code, token);
+      }
+    }
+    const { room, player } = authenticated;
     if (room.hostPlayerId !== player.id) throw new Error('HOST_ONLY');
     if (room.players.length < 5 || room.players.length > 10) throw new Error('PLAYER_COUNT_OUT_OF_RANGE');
-    if (room.players.some((item) => item.id !== player.id && !item.ready)) throw new Error('PLAYERS_NOT_READY');
-    const state = this.engine.start(room.players.map((item) => ({ id: item.id, nickname: item.nickname, seat: item.seat, connected: item.connected, ready: item.ready })));
+    if (room.players.some((item) => item.id !== player.id && !item.ready && !item.isBot)) throw new Error('PLAYERS_NOT_READY');
+    const state = this.engine.start(room.players.map((item) => ({ id: item.id, nickname: item.nickname, seat: item.seat, connected: item.connected, ready: item.ready, isBot: item.isBot })), undefined, Date.now(), testMode, testMode ? player.seat : undefined);
     await this.prisma.$transaction(async (tx) => {
       const count = await tx.gameSession.count({ where: { roomId: room.id } });
       const session = await tx.gameSession.create({ data: { id: state.id, roomId: room.id, sequence: count + 1, phase: state.phase, stateVersion: state.stateVersion, leaderSeat: state.leaderSeat, questIndex: 0, stateJson: JSON.stringify(state), roles: { create: state.assignments.map((item) => ({ playerId: item.playerId, role: item.role, faction: item.faction })) }, phases: { create: { phase: state.phase, version: state.phaseVersion } }, timers: { create: this.timerData(state) } } });
-      await tx.gameRoom.update({ where: { id: room.id }, data: { status: state.phase, stateVersion: state.stateVersion } });
+      await tx.gameRoom.update({ where: { id: room.id }, data: { status: state.phase, stateVersion: state.stateVersion, testMode } });
       await tx.gameEvent.create({ data: { roomId: room.id, sessionId: session.id, type: 'GAME_STARTED', stateVersion: state.stateVersion, publicJson: JSON.stringify({ phase: state.phase }) } });
     });
     return this.snapshot(code, token);
   }
 
+  async advanceTest(code: string, token: string) {
+    return this.mutate(code, token, (state, playerId, isHost) => {
+      if (!isHost) throw new Error('HOST_ONLY');
+      if (!state.testMode) throw new Error('TEST_MODE_ONLY');
+      const now = Date.now();
+      if (state.phase === 'ROLE_REVEAL') {
+        for (const player of state.players) if (!state.acknowledgedPlayerIds.includes(player.id)) this.engine.acknowledge(state, player.id, now);
+        return state;
+      }
+      if (state.phase === 'TEAM_SELECTION') {
+        const leader = state.players.find((item) => item.seat === state.leaderSeat);
+        if (!leader) throw new Error('LEADER_NOT_FOUND');
+        const size = QUEST_SIZES[state.players.length][state.questIndex];
+        return this.engine.submitTeam(state, leader.id, state.players.slice(0, size).map((item) => item.id), true, now);
+      }
+      if (state.phase === 'TEAM_VOTING') {
+        for (const player of state.players) if (!state.approvalVotes.some((vote) => vote.playerId === player.id)) this.engine.submitApproval(state, player.id, true, true, now);
+        return state;
+      }
+      if (state.phase === 'QUEST_SUBMISSION') {
+        for (const memberId of state.proposedTeam) if (!state.questVotes.some((vote) => vote.playerId === memberId)) this.engine.submitQuest(state, memberId, 'SUCCESS', true, now);
+        return state;
+      }
+      if (state.phase === 'ASSASSINATION_DECISION') {
+        const assassin = state.assignments.find((item) => item.role === 'ASSASSIN');
+        if (!assassin) throw new Error('ASSASSIN_NOT_FOUND');
+        const target = state.players.find((item) => item.id !== assassin.playerId);
+        if (!target) throw new Error('INVALID_TARGET');
+        return this.engine.assassinate(state, assassin.playerId, target.id, true, now);
+      }
+      if (state.phase === 'GAME_OVER') return state;
+      state.timer.status = 'RUNNING';
+      state.timer.phaseDeadlineAt = now - 1;
+      return this.engine.expire(state, now);
+    });
+  }
+
   async loadState(roomId: string): Promise<GameState> {
-    const session = await this.prisma.gameSession.findFirst({ where: { roomId, status: 'ACTIVE' }, orderBy: { sequence: 'desc' } });
-    if (!session) throw new Error('ACTIVE_GAME_NOT_FOUND');
+    const session = await this.prisma.gameSession.findFirst({ where: { roomId }, orderBy: { sequence: 'desc' } });
+    if (!session) throw new Error('GAME_SESSION_NOT_FOUND');
     return JSON.parse(session.stateJson) as GameState;
   }
 

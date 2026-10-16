@@ -10,6 +10,7 @@ export class JoinRoomDto {
 }
 
 export class TokenDto { @IsString() @Length(20, 200) token!: string }
+export class StartGameDto extends TokenDto { @IsOptional() @IsBoolean() testMode?: boolean }
 export class ReadyDto extends TokenDto { @IsBoolean() ready!: boolean }
 export class TeamDto extends TokenDto { @IsString({ each: true }) playerIds!: string[] }
 export class ApprovalDto extends TokenDto { @IsBoolean() approve!: boolean }

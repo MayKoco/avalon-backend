@@ -8,6 +8,7 @@ services:
       DATABASE_URL: file:/data/avalon.db
       FRONTEND_ORIGIN: "*"
       REJOIN_TOKEN_PEPPER: ${REJOIN_TOKEN_PEPPER:-local-development-pepper-change-me}
+      ALLOW_TEST_MODE: ${ALLOW_TEST_MODE:-false}
     volumes:
       - avalon-data:/data
 volumes:

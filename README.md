@@ -41,4 +41,8 @@ SQLite data is kept in the `avalon-data` volume. The container applies committed
 - State changes use optimistic state versions and SQLite transactions.
 - Phase expiration is processed by the server and remains tied to persisted deadlines.
 
+## Test Mode
+
+Set `ALLOW_TEST_MODE=true`. A host may then start with fewer than five real players; the server adds clearly marked Bot seats until the room has five players. Only the host receives the test-advance control, which completes missing simulated actions one phase at a time. Normal rooms still enforce 5–10 real players.
+
 See [task.md](task.md) for the delivery checklist and remaining work.
